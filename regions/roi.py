@@ -39,7 +39,11 @@ class Atlas(object):
         self.mask = (self.label_image != 0.).sum(3).astype('bool')
 
     def labels(self):
-        return range(self.size)
+        if self.label_map is not None:
+            return self.label_map.keys()
+        else:
+            return None
+        #return range(self.size)
 
     def names(self):
         if self.label_map is None:
@@ -242,21 +246,20 @@ class Atlas(object):
             threshold = options.get('threshold', .25)
             label_image_max = np.max(self.label_image, axis=3)
 
-            for label in self.labels():
+            for i,label in enumerate(self.labels()):
                 mask = np.logical_and(
-                    self.label_image[..., label] > threshold,
-                    self.label_image[..., label] == label_image_max)
+                    self.label_image[..., i] > threshold,
+                    self.label_image[..., i] == label_image_max)
                 parc_image[mask] = label
 
-            return Parcellation(parc_image, self.affine, label_map, 0)
         else:
             parc_image = np.zeros(self.shape, dtype='float32')
 
-            for label in self.labels():
-                R_mask = self.label_image[..., label]
+            for i,label in enumerate(self.labels()):
+                R_mask = self.label_image[..., i]
                 parc_image[R_mask] = label
 
-            return Parcellation(parc_image, self.affine, label_map, 0.)
+        return Parcellation(parc_image, self.affine, label_map, 0.)
 
     def show(self, label=None, rcmap=None, **options):
         self.label_image = np.array(self.label_image)
@@ -273,7 +276,7 @@ class Atlas(object):
                 color = rcmap(1. * i / self.size) if rcmap is not None \
                     else pl.cm.gist_rainbow(1. * i / self.size)
                 slicer.contour_map(
-                    self.label_image[..., label],
+                    self.label_image[..., i],
                     self.affine, levels=[0],
                     colors=(color, ))
             return slicer
@@ -296,11 +299,13 @@ class Parcellation(object):
         check_float_approximation(self.label_image, self.mask)
 
     def labels(self):
-        return np.unique(self.label_image[self.mask]).astype('int').tolist()
+        if self.label_map is None:
+            return np.unique(self.label_image[self.mask]).astype('int').tolist()
+        return self.label_map.keys()
 
     def names(self):
         if self.label_map is None:
-            return self.labels()
+            return None
         return self.label_map.values()
 
     def fit(self, mask, affine):
