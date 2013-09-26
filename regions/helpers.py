@@ -1,4 +1,4 @@
-import os
+import os.path as osp
 import xml.etree.ElementTree as etree
 
 import nibabel as nb
@@ -6,9 +6,13 @@ import numpy as np
 
 from regions import Atlas
 
+atlas_files_path = osp.abspath(__file__)
+_atlases = osp.join(osp.split(atlas_files_path)[0], 'atlases')
 
-_atlases = os.path.join(os.path.abspath(__file__).rsplit('/', 1)[0], 'atlases')
 
+if not osp.isdir(_atlases): 
+    print "cannot locate atlas directory %s \n" % _atlases
+    exit()
 
 def harvard_oxford_atlas(name='cort', res='2mm'):
     """ Helper function to load Harvard-Oxford atlas.
