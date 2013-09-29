@@ -1,6 +1,7 @@
 import glob
 import regions
-from distutils.core import setup
+#from distutils.core import setup
+from setuptools import setup # this allows setup.py develop --user
 
 CLASSIFIERS = """\
 Development Status :: 2 - Pre-Alpha
