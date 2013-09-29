@@ -1,3 +1,4 @@
+from __future__ import print_function
 from collections import namedtuple
 import os.path as osp
 import xml.etree.ElementTree as etree
@@ -8,10 +9,14 @@ import nibabel as nib
 import nipy.labs.viz as viz
 from nipy.labs.datasets import VolumeImg
 import numpy.testing as npt
+import sys
 
 # from .utils import resample, atlas_mean, check_float_approximation
 
-def load_atlas(atlas_name, atlas_dir, atlas_labels=''):
+print("reloading ProbAtlas\n")
+sys.stdout.flush()
+
+def load_atlas(atlas_name, atlas_dir, atlas_labels='', verbose=0):
     """ 
     atlas_name: str
         The name of the gz and xml file
@@ -33,6 +38,7 @@ def load_atlas(atlas_name, atlas_dir, atlas_labels=''):
     """
     
     atlas_file = osp.join(atlas_dir, atlas_name)
+
     if not osp.isfile(atlas_file):
         raise Exception("%s not a file" % atlas_file)
     
@@ -50,8 +56,11 @@ def load_atlas(atlas_name, atlas_dir, atlas_labels=''):
         data = data[...,None]
         warn("adding an extra dimension to only 3d data")
 
-    nrois = data.shape[3]
-    print "%d rois \n" % nrois
+    if verbose:
+        nrois = data.shape[3]
+        print("Atlas has %d rois \n" % nrois, file=sys.__stdout__)
+        # print "\nMax values : ", [data[...,idx].max() for idx in range(nrois)]
+        # print "\nMin values : ", [data[...,idx].min() for idx in range(nrois)]
 
     labels = []
     atlas_labels = osp.join(atlas_dir, atlas_labels)
@@ -60,12 +69,14 @@ def load_atlas(atlas_name, atlas_dir, atlas_labels=''):
             # find the elements "label" two levels below root 
             for label in etree.parse(atlas_labels).findall('.//label'):
                 labels.append((label.get('index'), label.text))
+            labels = [lab[1] for lab in labels]
         except:
             warn("could not parse %s creating dummy labels \n" % atlas_labels)
             etree.tostring(etree.parse(atlas_labels))
     else:
         warn("no file %s - creating dummy labels \n" % atlas_labels)
-        labels = [(str(i),'region'+str(i)) for i in range(nrois)]
+        # labels = [(str(i),'region'+str(i)) for i in range(nrois)]
+        labels = ['region'+str(i) for i in range(nrois)]
 
     if not len(labels) == data.shape[3]:
         raise Exception(" %d labels and %d images in atlas \n" % (len(labels), data.shape[3]))
@@ -85,51 +96,63 @@ class ProbAtlas(object):
         """
 
         # check that the number of labels is the same as the data 4th dimension 
-        if len(self.labels) != prob_data.shape[3]:
-            raise Exception("labels %d data %d " % len(self.labels), 
-                                                prob_data.shape[3])
 
         self.affine = affine.astype('float32')
 
         if len(prob_data.shape) == 3:   # single region in atlas
             prob_data = prob_data[...,None]
 
-
+        self._data = prob_data
         self.shape = prob_data.shape
-        self.nrois = len(self.labels)
-        
-        self.rois = [(labels[idx], prob_data[...,idx]) 
-                                    for idx in range(self.nrois)]
 
+        self.labels = labels
+        self.nrois = len(self.labels)
+
+        #rois = [(labels[idx], prob_data[...,idx]) 
+        #                            for idx in range(len(labels))]
+
+        if len(self.labels) != prob_data.shape[3]:
+            raise Exception("labels %d data %d " % len(self.labels), 
+                                                prob_data.shape[3])
     
     @property
-    def labels(self):
-        return [self.rois[i][0] for i in range(len(self.rois))]
-
-    @property
     def data(self):
-        return np.hstack( tuple([roi[1] for roi in self.rois]) )
+        return self._data.copy() 
+    
+       # return a copy of the data 
+       # print("\n copying data !!! \n", file=sys.__stdout__)
+       # sys.stdout.flush()
+
+       # d = self.rois[0][1][...,np.newaxis]
+       # for idx in range(len(self.rois)-1):
+       #     d = np.append(d, self.rois[idx+1][1][...,np.newaxis], axis=3)
 
     def mask(self, thresh=0., roiidx='all'):
         """
-        roiidx:
-            'all' or list of roi indices
-        return boulean mask : True if data > thresh
+        inputs:
+            roiidx :
+                'all' or list of roi indices
+        return:
+            boulean mask 
+                True if data > thresh in any of the rois (the 'in' mask)
         """
         
         if roiidx == 'all':
-            return (self.data > thresh).sum(3).astype('bool') 
+            return (self._data > thresh).any(axis=3) #         
         else:
-            return (self.data[...,roiidx] > thresh).sum(3).astype('bool')
+            if not hasattr(roiidx, '__iter__'):
+                # assumes a single roi
+                roiidx = [roiidx]
+            return (self._data[...,roiidx] > thresh).any(axis=3) #.astype('bool')
 
-    def parcellate(self, thres = 0., outvalue=-1):
+    def parcellate(self, thres=0., outvalue=-1):
         """ 
         Create a labelled array from the list of probabilistic rois
         thres: float
             the threshold above which (stricly) the data are considered inside
         """
         # This - bad design - duplicates the data...
-        self.parcellation = self.data.argmax(axis=3)
+        self.parcellation = self._data.argmax(axis=3)
 
         # the inverse of the mask : outcondition
         outcondition = ~self.mask(thres)
@@ -137,8 +160,9 @@ class ProbAtlas(object):
         # put -1 outside such that 0 is a relevant label
         self.parcellation = np.where(outcondition, outvalue, self.parcellation)
 
-    def getrois(self, idxrois):
-        return self.rois(idxrois)
+#    def getrois(self, idxrois):
+#        return self.rois(idxrois)
+#
 
     def resample(self, target, interpolation='continuous'):
         """ resample to target - st after 
@@ -150,7 +174,7 @@ class ProbAtlas(object):
             interpolated_data
         """
         target_shape, target_affine = target
-        input_image = VolumeImg(self.data, # dont need self.data[:] because data copied here
+        input_image = VolumeImg(self._data[:], #why do we need self.data[:]? 
                             self.affine,
                             'arbitrary',
                             interpolation=interpolation
@@ -163,36 +187,96 @@ class ProbAtlas(object):
         return resampled_img.get_data() 
 
 
-    def cut_right_left(self, cut_mask, do_not_cut=[]):
+    def keep_mask(self, keep_mask, prepend_str, do_not_cut=[], cut_value=0., verbose=0):
         """ 
         A method to cut the atlas in left and right part, assumes that x is first dimension
         inputs:
-            cut_mask: 0 or False value in mask will be cut
+            keep_mask: 1 or True value in mask will be kept 
+            prepend_str: string
+                the label to be prepend
             do_not_cut: list
                 list of the index of the regions to not cut
+            cut_value: float
+                the value put where keep_mask is True 
         returns:
-            lrAtlas: ProbAtlas object
+            cut_Atlas: ProbAtlas object
                 the same atlas with regions cut
         """
+         
+        if verbose:
+            print( " entering keep_mask stdout", file=sys.stdout)
+            sys.stdout.flush()
+
         dimxyzr = self.shape 
 
-        npt.assert_equal(np.asarray(dimxyzr)[:-1], cut_mask.shape, "shape of self and mask")
+        npt.assert_equal(np.asarray(dimxyzr)[:-1], 
+                         np.asarray(keep_mask.shape), "shape of self and mask")
+
+        new_labels = self.labels[:]
+        new_data = np.empty_like(self._data) 
+
+        for idx in range(self.nrois):
+            if idx in do_not_cut:
+                if verbose:
+                    # debug : stdout to cell output / __stdout__ to terminal
+                    # print( " do not cut %d " % idx, file=sys.__stdout__)
+                    print(" stdout do not cut %d " % idx, file=sys.stdout)
+                    sys.stdout.flush()
+                    # sys.__stdout__.flush()
+
+                new_data[...,idx] = self._data[...,idx] 
+            else:
+                if verbose:
+                    # debug : stdout to cell output / __stdout__ to terminal
+                    print(" stdout do not cut %d " % idx, file=sys.stdout)
+                    sys.stdout.flush()
+
+                new_data[...,idx] = np.where(keep_mask, self._data[...,idx], cut_value)
+                new_labels[idx] = prepend_str + self.labels[idx]
+            
+        return (new_data, self.affine.copy(), new_labels) 
+
+    #def xyz_argmax(self, roiidx):
+
+    def rm_rois(self, roiidx, verbose=0): 
         
-        (dx, dy, dx, dr) = self.shape 
-        dx2 = dx/2
-        new_rois = []
-        for idx, roi in enumerate(self.rois):
-            #
-            if idx not in do_not_cut:
-                rdata = np.array(roi[idx][1], copy=TRUE)
-                rdata[dx2,...] = 0 
-                rlabel = "Right_" + roi[idx][0][1]
-                new_rois.append((rlabel, rdata))
-                ldata = np.array(roi[idx][1], copy=TRUE)
-                ldata[dx2,...] = 0
-                llabel = "Left_" + roi[idx][0][1]
-                new_rois.append((llabel, ldata))
-        
-        return new_rois + self.rois(do_not_cut)
+        if not hasattr(roiidx, '__iter__'):
+            roiidx = [roiidx]
+
+        keepidx = [idx for idx in range(self.nrois) if idx not in roiidx]
+        new_nrois = len(keepidx)
+
+        self._data = self._data[...,keepidx]
+        self.labels = [self.labels[idx] for idx in keepidx]
+        self.shape = self._data.shape
+        self.nrois = new_nrois
+
+    def indexof(self, roi_names):
+        if not hasattr(roi_names, '__iter__'): 
+            roi_names = [roi_names]
+
+        return [self.labels.index(roi_name) for roi_name in roi_names]
+
+
+    def append(self, Atlas2):
+        # Append Atlas2 to self
+        if not np.allclose(self.affine, Atlas2.affine):
+            warn("affines dont match in self and Atlas2")
+            return None
+
+        assert_equal(self.shape[:-1], Atlas2.shape[:-1])
+
+        for roi in self.labels:
+            if roi in Atlas.labels:
+                warn("roi label %s also in appended atlas " % roi)
+                return None
+
+        self.nrois = self.nrois + Atlas2.nrois
+        self.labels = self.labels + Atlas2.labels
+        self._data = np.hstack(self._data, Atlas._data)
+
+
+
+
 
 
