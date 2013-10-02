@@ -3,6 +3,8 @@ from numpy.testing import (assert_array_almost_equal, assert_almost_equal, asser
 import numpy as np
 from regions.prob_atlas import *
 import sys
+import os
+import tempfile
 
 def make_data():
     d = np.arange(4*4*3*3).reshape((4,4,3,3)) + 1.
@@ -52,11 +54,11 @@ def test_keep_mask():
     assert_array_almost_equal(kd[...,1], T.data[...,1])
     assert kl[1] == T.labels[1]  
 
-def test_mask():
+def test_get_mask():
 
     d, a, l = make_data()
     T = make_fake_atlas(d, a, l)
-    Tmask = T.mask().astype('int')
+    Tmask = T.get_mask().astype('int')
     # that doesnt work :
         # print Tmask
         # sys.stdout.flush()
@@ -106,8 +108,35 @@ def test_rm_rois():
     assert_equal(T.shape, d.shape[:-1]+(T.nrois,))
 
 
+def test_write_read():
+    
+    T = make_fake_atlas(*make_data())
+    
+    with tempfile.NamedTemporaryFile(mode='w+t') as tmpf:
+        tmpfilename = tmpf.name
 
+    T.writefile(tmpfilename)
+    N = readAtlasFile(tmpfilename)
 
+    # os.remove(tmpfilename)
+
+    assert_array_almost_equal(T._data, N._data)
+    assert_equal(N.labels, T.labels)
+    assert_equal(T.nrois, N.nrois)
+    assert_equal(T.shape, N.shape)
+
+def test_max_rois_pos():
+
+    # d = np.arange(4*4*3*3).reshape((4,4,3,3)) + 1.
+    T = make_fake_atlas(*make_data())
+    # put some maxima
+    pos = [(2,3,1), (0,2,1), (1,1,2)]
+
+    for i,p in enumerate(pos): 
+        T._data[p+(i,)] = 4*4*3*3*10
+
+    for i,p in enumerate(pos): 
+        assert_equal(T.max_rois_pos(i), p) 
 
 
 
