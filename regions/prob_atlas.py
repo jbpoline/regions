@@ -40,7 +40,6 @@ def load_atlas(atlas_name, atlas_dir, atlas_labels='', scalefactor=1.0, verbose=
                                           osp.join(USER,'code','regions','regions','atlases'))
     """
 
-    cast_to = 'float32'
 
     atlas_file = osp.join(atlas_dir, atlas_name)
 
@@ -54,6 +53,8 @@ def load_atlas(atlas_name, atlas_dir, atlas_labels='', scalefactor=1.0, verbose=
     except:
         raise Exception(" cannot load image %s with nibabel" % atlas_file)
 
+    # cast data 
+    cast_to = 'float32'
     data = data.astype(cast_to)
 
     if not len(data.shape) in [3,4]:
@@ -93,6 +94,8 @@ def load_atlas(atlas_name, atlas_dir, atlas_labels='', scalefactor=1.0, verbose=
     if clean:
         if data.dtype in ['float', 'float32', 'float64']:
             data[data <= np.finfo(data.dtype).eps] = 0
+        else:
+            warn("cannot clean the data - not float : %s " % data.dtype)
 
     print( " scalefactor = %f " % scalefactor, file=sys.stdout) 
     sys.stdout.flush()
@@ -409,6 +412,15 @@ class ProbAtlas(object):
         
         return positions
 
+    def rois_mean(self, roiidx, data):
+        """ 
+        """ 
+        if not (hasattr(self, "parcellation")) or (self.parcellation==None):
+            self.parcellate()
+        if not hasattr(roiidx, '__iter__'):
+            roiidx = [roiidx]
 
+        parcels = self.parcellation
+        return [data[parcels == idx].mean() for idx in roiidx]
 
 
