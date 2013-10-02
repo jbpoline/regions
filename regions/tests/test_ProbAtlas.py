@@ -138,5 +138,42 @@ def test_max_rois_pos():
     for i,p in enumerate(pos): 
         assert_equal(T.max_rois_pos(i), p) 
 
+def test_parcellate():
+    N = make_fake_atlas(*make_data())
+    N._data[:,:,0,0] =  2
+    N._data[:,:,2,1] =  3
+    N._data[:,:,1,2] =  4
 
+    N.parcellate()
+    assert_equal(N.parcellation[0,:,0], np.zeros(4))
+    assert_equal(N.parcellation[0,:,2], np.ones(4))
+    assert_equal(N.parcellation[0,:,1], np.ones(4)*2)
+
+
+def test_rois_mean():
+    N = make_fake_atlas(*make_data())
+    N._data[:,:,0,0] =  2
+    N._data[:,:,2,1] =  3
+    N._data[:,:,1,2] =  4
+    parcels = N._data.argmax(axis=3)
+
+    d = N._data[...,0]
+    expect_roi0 = [2.0, 0.0, 0.496527777778]
+    mean_roi0 = [d[parcels==i].mean() for i in range(N.nrois)]
+    assert_almost_equal(mean_roi0, expect_roi0)
+    assert_almost_equal(N.rois_mean([0,1,2], d), expect_roi0)
+
+    d = N._data[...,1]
+    expect_roi1 = [0.48263888888888895, 3.0, 0.50347222222222221]
+    mean_roi1 = [d[parcels==i].mean() for i in range(N.nrois)]
+    assert_almost_equal(mean_roi1, expect_roi1)
+    assert_almost_equal(N.rois_mean([0,1,2], d), expect_roi1)
+
+    assert_almost_equal(N.rois_mean([0,1,2], d), expect_roi1)
+
+    d = N._data[...,2]
+    expect_roi2 = [0.48958333333333326, 0.0, 4.0]
+    mean_roi2 = [d[parcels==i].mean() for i in range(N.nrois)]
+    assert_almost_equal(mean_roi2, expect_roi2)
+    assert_almost_equal(N.rois_mean([0,1,2], d), expect_roi2)
 
