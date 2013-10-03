@@ -9,14 +9,19 @@ import numpy.testing as npt
 import sys
 import json
 from datetime import datetime 
-
 # from .utils import resample, atlas_mean, check_float_approximation
 
 dtime = datetime.now().strftime("%y-%m-%d-%H-%M-%S")
 print("reloading ProbAtlas at %s \n" % dtime)
 sys.stdout.flush()
 
-def load_atlas(atlas_name, atlas_dir, atlas_labels='', scalefactor=1.0, verbose=0, clean=True):
+# globals - should be a dict passed around ?
+cast_to = 'float32'
+tiny = np.finfo(cast_to).eps * 1000
+
+
+def load_atlas(atlas_name, atlas_dir, atlas_labels='', scalefactor=1.0, 
+                verbose=0, clean=True):
     """ 
     atlas_name: str
         The name of the gz and xml file
@@ -54,7 +59,6 @@ def load_atlas(atlas_name, atlas_dir, atlas_labels='', scalefactor=1.0, verbose=
         raise Exception(" cannot load image %s with nibabel" % atlas_file)
 
     # cast data 
-    cast_to = 'float32'
     data = data.astype(cast_to)
 
     if not len(data.shape) in [3,4]:
@@ -93,9 +97,9 @@ def load_atlas(atlas_name, atlas_dir, atlas_labels='', scalefactor=1.0, verbose=
     if not scalefactor == 1.: data *= scalefactor
     if clean:
         if data.dtype in ['float', 'float32', 'float64']:
-            data[data <= np.finfo(data.dtype).eps] = 0
+            data[data < tiny] = 0
         else:
-            warn("cannot clean the data - not float : %s " % data.dtype)
+            warn("cannot clean the data - data not float: %s " % data.dtype)
 
     print( " scalefactor = %f " % scalefactor, file=sys.stdout) 
     sys.stdout.flush()
@@ -141,13 +145,13 @@ def readAtlasFile(filename):
 class ProbAtlas(object):
     # design issues : should the atlas be simply a 4D nibabel image - 4th dim the roi?
 
-    def __init__(self, prob_data, affine, labels, incl_thres=0.):
+    def __init__(self, prob_data, affine, labels, thres=tiny, cast_to=cast_to):
         """
         prob_data: a 4D numpy array, 4th dimension are the regions
             (if 3D : assume that means only one region)
         affine: the associated affine
         labels: list of strings with same order as the regions
-        incl_thres: threshold above which stricly values are included in mask
+        thres: threshold above which stricly values are included in mask
         """
         if prob_data == None:
             self._data = None
@@ -160,6 +164,14 @@ class ProbAtlas(object):
 
         if len(prob_data.shape) == 3:   # single region in atlas
             prob_data = prob_data[...,None]
+
+        prob_data = prob_data.astype(cast_to)
+
+        if thres != None:
+            if prob_data.dtype in ['float', 'float32', 'float64']:
+                prob_data[prob_data < tiny] = 0
+            else:
+                warn("cannot clean the data - data not float: %s " % data.dtype)
 
         self._data = prob_data
         self.shape = prob_data.shape
@@ -174,7 +186,8 @@ class ProbAtlas(object):
         if len(self.labels) != prob_data.shape[3]:
             raise Exception("labels %d data %d " % len(self.labels), 
                                                 prob_data.shape[3])
-    
+        
+
     @property
     def data(self):
         return self._data.copy() 
@@ -187,7 +200,7 @@ class ProbAtlas(object):
        # for idx in range(len(self.rois)-1):
        #     d = np.append(d, self.rois[idx+1][1][...,np.newaxis], axis=3)
 
-    def get_mask(self, thres=0., roiidx='all'):
+    def get_mask(self, thres=tiny, roiidx='all'):
         """
         inputs:
             roiidx :
@@ -215,7 +228,7 @@ class ProbAtlas(object):
         """
         self._data[~mask] = outvalue
 
-    def parcellate(self, thres=0., outvalue=-1):
+    def parcellate(self, thres=tiny, outvalue=-1):
         """ 
         Create a labelled array from the list of probabilistic rois
         thres: float
@@ -267,7 +280,7 @@ class ProbAtlas(object):
             do_not_cut: list
                 list of the index of the regions to not cut
             cut_value: float
-                the value put where keep_mask is True 
+                the value to put where keep_mask is True 
         returns:
             cut_Atlas: ProbAtlas object
                 the same atlas with regions cut
@@ -327,6 +340,14 @@ class ProbAtlas(object):
 
         return [self.labels.index(roi_name) for roi_name in roi_names]
 
+    def searchin(self, pattern, regex=False):
+        "return the list of roi which lable have pattern"
+        if not regex:
+            return([i for i in range(self.nrois) if pattern in self.labels[i]])
+        else:
+            import re
+            regsearch = [re.search(pattern, self.labels[i]) for i in range(self.nrois)]
+            return [i for (i,s) in enumerate(regsearch) if s != None]
 
     def append(self, Atlas2):
         """ Append  Atlas2 to self """
@@ -363,7 +384,7 @@ class ProbAtlas(object):
                 json.dump([(str(idx), l) for (idx,l) in enumerate(self.labels)], f)
 
 
-    def writerois(self, filename, force=False, **extra):
+    def writeparcels(self, filename, force=False, **extra):
         """
         write a nifti image of the parcellation 
         *extra : dictionary containing named arguments to pass to parcellate
@@ -374,7 +395,7 @@ class ProbAtlas(object):
         else:
             fbase, _ = osp.splitext(filename) 
             if not (hasattr(self, "parcellation")) or (self.parcellation==None):
-                thres = 0.; outvalue = -1 
+                thres = tiny; outvalue = -1 
                 if extra.has_key("thres"): thres = extra["thres"]
                 if extra.has_key("outvalue"): outvalue = extra["outvalue"]
                 self.parcellate()

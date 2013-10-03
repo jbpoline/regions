@@ -29,8 +29,8 @@ def test_atlas():
     # assert_array_equal(np.asarray(T.labels), np.asarray(['r1', 'r2', 'r3']))
     assert_equal(T.labels,['r1', 'r2', 'r3'], " T.labels and ['r1', 'r2', 'r3']")
     assert_equal(T.shape, d.shape)
-    assert_array_equal(T.data, d)
-    assert_array_equal(T.affine, a)
+    assert_array_almost_equal(T.data, d)
+    assert_array_almost_equal(T.affine, a)
     assert T.labels == l
 
 def test_keep_mask():
@@ -101,7 +101,7 @@ def test_rm_rois():
     T = make_fake_atlas(d, a, l)
     T.rm_rois([0])
 
-    assert_array_equal(d[...,[1,2]], T._data[...,[0,1]])
+    assert_array_almost_equal(d[...,[1,2]], T._data[...,[0,1]])
     
     assert_equal([l[1],l[2]], T.labels)
     assert_equal(T.nrois, len(l)-1)
@@ -176,4 +176,17 @@ def test_rois_mean():
     mean_roi2 = [d[parcels==i].mean() for i in range(N.nrois)]
     assert_almost_equal(mean_roi2, expect_roi2)
     assert_almost_equal(N.rois_mean([0,1,2], d), expect_roi2)
+
+def test_searchin():
+
+    N = make_fake_atlas(*make_data())
+    assert_equal(N.searchin("r1"), [0])
+    assert_equal(N.searchin("r3"), [2])
+    assert_equal(N.searchin("r[2,3]", regex=True), [1,2])
+    assert_equal(N.searchin("r"), [0,1,2])
+    assert_equal(N.searchin("t"), [])
+    assert_equal(N.searchin("r4"), [])
+    assert_equal(N.searchin('r\\d', regex=True), [0,1,2])
+    assert_equal(N.searchin('r.+', regex=True), [0,1,2])
+
 
