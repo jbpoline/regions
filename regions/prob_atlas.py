@@ -27,11 +27,11 @@ def load_atlas(atlas_name, atlas_dir, atlas_labels='', scalefactor=1.0,
         The name of the gz and xml file
     atlas_dir: str
         The path to the atlas files
+    atlas_labels : str 
+        make a file : osp.join(atlas_dir, atlas_labels)
     scalefactor: float or "max"
         multiply the data by scalefactor
         if "max" : multiply by 1./data.max()
-    atlas_lable : str 
-        make a file : osp.join(atlas_dir, atlas_labels)
     Returns:
     data: numpy array
         the atlas 4d volume
@@ -58,7 +58,7 @@ def load_atlas(atlas_name, atlas_dir, atlas_labels='', scalefactor=1.0,
     except:
         raise Exception(" cannot load image %s with nibabel" % atlas_file)
 
-    # cast data 
+    # cast data **** HERE WE CAST THE DATA TO to_cast !!!! ***** 
     data = data.astype(cast_to)
 
     if not len(data.shape) in [3,4]:
@@ -143,7 +143,7 @@ def readAtlasFile(filename):
 
 
 class ProbAtlas(object):
-    # design issues : should the atlas be simply a 4D nibabel image - 4th dim the roi?
+    # design question: should the atlas be simply a 4D nibabel image - 4th dim the roi?
 
     def __init__(self, prob_data, affine, labels, thres=tiny, cast_to=cast_to):
         """
@@ -151,7 +151,7 @@ class ProbAtlas(object):
             (if 3D : assume that means only one region)
         affine: the associated affine
         labels: list of strings with same order as the regions
-        thres: threshold above which stricly values are included in mask
+        thres: threshold above which (stricly) values are included in mask
         """
         if prob_data == None:
             self._data = None
@@ -341,7 +341,7 @@ class ProbAtlas(object):
         return [self.labels.index(roi_name) for roi_name in roi_names]
 
     def searchin(self, pattern, regex=False):
-        "return the list of roi which lable have pattern"
+        "return the list of roi index in which pattern is found in labels"
         if not regex:
             return([i for i in range(self.nrois) if pattern in self.labels[i]])
         else:
@@ -353,7 +353,7 @@ class ProbAtlas(object):
         """ Append  Atlas2 to self """
 
         if not np.allclose(self.affine, Atlas2.affine):
-            warn("affines dont match in self and Atlas2")
+            warn("affines dont match in self and Atlas2 : cannot append")
             return None
 
         npt.assert_equal(self.shape[:-1], Atlas2.shape[:-1])
@@ -404,13 +404,15 @@ class ProbAtlas(object):
             nib.save(img, fbase+'.nii')
 
     def summary(self):
-
+        allidx = range(self.nrois)
         print(" nrois : %d " % self.nrois, file=sys.stdout, end='')
         print(" shape %s " % str(self._data.shape), file=sys.stdout, end='')
         print(" dtype %s " % self._data.dtype, file=sys.stdout) 
-        print("\nMax values : %s " % str([self._data[...,idx].max() for idx in range(self.nrois)]), 
+        print("\nMax values : %s " % str([self._data[...,idx].max() for idx in allidx]), 
                 file=sys.stdout)
-        print("\nMin values : %s " % str([self._data[...,idx].min() for idx in range(self.nrois)]),
+        print("\nMin values : %s " % str([self._data[...,idx].min() for idx in allidx]),
+                file=sys.stdout)
+        print("\nROIs number of voxels : %s " % str(self.rois_length(allidx)),
                 file=sys.stdout)
         sys.stdout.flush()
 
@@ -444,4 +446,14 @@ class ProbAtlas(object):
         parcels = self.parcellation
         return [data[parcels == idx].mean() for idx in roiidx]
 
+    def rois_length(self, roiidx):
+        """ 
+        """ 
+        if not (hasattr(self, "parcellation")) or (self.parcellation==None):
+            self.parcellate()
+        if not hasattr(roiidx, '__iter__'):
+            roiidx = [roiidx]
+
+        parcels = self.parcellation
+        return [(parcels == idx).sum() for idx in roiidx]
 
