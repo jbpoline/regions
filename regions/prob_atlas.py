@@ -171,7 +171,7 @@ class ProbAtlas(object):
             if prob_data.dtype in ['float', 'float32', 'float64']:
                 prob_data[prob_data < tiny] = 0
             else:
-                warn("cannot clean the data - data not float: %s " % data.dtype)
+                warn("cannot clean the data - data not float: %s " % prob_data.dtype)
 
         self._data = prob_data
         self.shape = prob_data.shape
@@ -192,7 +192,7 @@ class ProbAtlas(object):
     def data(self):
         return self._data.copy() 
     
-       # return a copy of the data 
+       # returns a copy of the data 
        # print("\n copying data !!! \n", file=sys.__stdout__)
        # sys.stdout.flush()
 
@@ -226,6 +226,8 @@ class ProbAtlas(object):
         inputs:
             mask: boulean mask of the right dimension
         """
+        # force recomputing the parcellation next time it is used
+        self.parcellation = None
         self._data[~mask] = outvalue
 
     def parcellate(self, thres=tiny, outvalue=-1):
@@ -233,8 +235,9 @@ class ProbAtlas(object):
         Create a labelled array from the list of probabilistic rois
         thres: float
             the threshold above which (stricly) the data are considered inside
+            an ROI
         """
-        # This uses _data : do not duplicate
+        # This uses _data : does not duplicate the data
         self.parcellation = self._data.argmax(axis=3)
 
         # the inverse of the mask : outcondition
@@ -272,7 +275,8 @@ class ProbAtlas(object):
 
     def keep_mask(self, keep_mask, prepend_str, do_not_cut=[], cut_value=0., verbose=0):
         """ 
-        A method to cut the atlas in left and right part, assumes that x is first dimension
+        This takes a mask (True in the mask), and put voxels that are outside the mask
+        to to "cut_value" for all ROIs except those in "do_not_cut"
         inputs:
             keep_mask: 1 or True value in mask will be kept 
             prepend_str: string
@@ -282,8 +286,9 @@ class ProbAtlas(object):
             cut_value: float
                 the value to put where keep_mask is True 
         returns:
-            cut_Atlas: ProbAtlas object
-                the same atlas with regions cut
+            new_data, self.affine.copy(), new_labels
+            # cut_Atlas: ProbAtlas object
+            #    the same atlas with regions cut
         """
          
         if verbose:
@@ -316,7 +321,10 @@ class ProbAtlas(object):
 
                 new_data[...,idx] = np.where(keep_mask, self._data[...,idx], cut_value)
                 new_labels[idx] = prepend_str + self.labels[idx]
-            
+
+        # force recomputing the parcellation next time it is used
+        self.parcellation = None
+
         return (new_data, self.affine.copy(), new_labels) 
 
     #def xyz_argmax(self, roiidx):
@@ -333,6 +341,8 @@ class ProbAtlas(object):
         self.labels = [self.labels[idx] for idx in keepidx]
         self.shape = self._data.shape
         self.nrois = new_nrois
+        # force recomputing the parcellation next time it is used
+        self.parcellation = None
 
     def indexof(self, roi_names):
         if not hasattr(roi_names, '__iter__'): 
@@ -368,8 +378,10 @@ class ProbAtlas(object):
         self.labels = self.labels + Atlas2.labels
         self._data = np.concatenate((self._data, Atlas2._data),axis=-1)
         self.shape = self._data.shape
+        # force recomputing the parcellation next time it is used
+        self.parcellation = None
 
-    def writefile(self, filename, force=False):
+    def write_to_file(self, filename, force=False):
         """
         write a nifti image and a jason file
         """
@@ -378,13 +390,13 @@ class ProbAtlas(object):
             return None
         else:
             fbase, _ = osp.splitext(filename) 
-            img = nib.Nifti1Image(self._data, self.affine)
-            nib.save(img, fbase+'.nii')
+            img = nib.Nifti1Image(np.asarray(self._data), self.affine)
+            nib.save(img, fbase+'.nii.gz')
             with open(fbase+'.json','w') as f:
                 json.dump([(str(idx), l) for (idx,l) in enumerate(self.labels)], f)
 
 
-    def writeparcels(self, filename, force=False, **extra):
+    def write_parcels(self, filename, force=False, **extra):
         """
         write a nifti image of the parcellation 
         *extra : dictionary containing named arguments to pass to parcellate
@@ -398,9 +410,10 @@ class ProbAtlas(object):
                 thres = tiny; outvalue = -1 
                 if extra.has_key("thres"): thres = extra["thres"]
                 if extra.has_key("outvalue"): outvalue = extra["outvalue"]
-                self.parcellate()
+                self.parcellate(thres, outvalue)
 
-            img = nib.Nifti1Image(self.parcellation, self.affine)
+            #cast parcellation as float to be read by mricron
+            img = nib.Nifti1Image(self.parcellation.astype("float"), self.affine)
             nib.save(img, fbase+'.nii')
 
     def summary(self):
@@ -456,4 +469,17 @@ class ProbAtlas(object):
 
         parcels = self.parcellation
         return [(parcels == idx).sum() for idx in roiidx]
+
+
+    def find_zero_rois(self, thres=tiny):
+        """ 
+        returns the list of indexes of the ROIs with no values above `thres`
+        """ 
+        zero_idx = []
+        for idx in range(self.nrois):
+            if np.all(self._data[...,idx] <= tiny):
+                zero_idx.append(idx)
+        return zero_idx
+
+
 
