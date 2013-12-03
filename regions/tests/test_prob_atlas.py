@@ -2,9 +2,11 @@ from __future__ import print_function
 from numpy.testing import (assert_array_almost_equal, assert_almost_equal, assert_array_equal, assert_equal)
 import numpy as np
 from regions.prob_atlas import *
-import sys
-import os
+#import sys
+#import os
 import tempfile
+cast_to = 'float32'
+tiny = np.finfo(cast_to).eps * 1000
 
 def make_data():
     d = np.arange(4*4*3*3).reshape((4,4,3,3)) + 1.
@@ -188,5 +190,16 @@ def test_searchin():
     assert_equal(N.searchin("r4"), [])
     assert_equal(N.searchin('r\\d', regex=True), [0,1,2])
     assert_equal(N.searchin('r.+', regex=True), [0,1,2])
+
+def test_zero_rois():
+    (d, a, l) = make_data()
+    d[:,:,:,1] = tiny/2.0
+    N = make_fake_atlas(d, a, l)
+    assert_equal(N.zero_rois(thres=tiny), [1])
+    d[:,:,:,2] = tiny/2.0
+    N = make_fake_atlas(d, a, l)
+    assert_equal(N.zero_rois(thres=tiny), [1,2])
+    
+
 
 
