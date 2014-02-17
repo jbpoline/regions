@@ -11,6 +11,7 @@ import json
 from datetime import datetime 
 # from .utils import resample, atlas_mean, check_float_approximation
 
+# this is for debug purposes
 dtime = datetime.now().strftime("%y-%m-%d-%H-%M-%S")
 print("reloading ProbAtlas at %s \n" % dtime)
 sys.stdout.flush()
@@ -58,7 +59,7 @@ def load_atlas(atlas_name, atlas_dir, atlas_labels='', scalefactor=1.0,
     except:
         raise Exception(" cannot load image %s with nibabel" % atlas_file)
 
-    # cast data **** HERE WE CAST THE DATA TO to_cast !!!! ***** 
+    # cast data **** HERE WE CAST THE DATA TO cast_to ***** 
     data = data.astype(cast_to)
 
     if not len(data.shape) in [3,4]:
