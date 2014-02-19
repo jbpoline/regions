@@ -4,8 +4,16 @@ import scipy.ndimage.morphology as morph
 import sys
 import os
 import tempfile
+from datetime import datetime 
+import logging as logg
 
-BACKGROUND = -1
+logg.basicConfig(level=logg.DEBUG)
+LOG = logg.getLogger("cleanAtlas")
+
+dtime = datetime.now().strftime("%y-%m-%d-%H-%M-%S")
+print("reloading clean atlas at %s \n" % dtime)
+sys.stdout.flush()
+
 
 def translate_struct(point, struct):
     """
@@ -147,7 +155,30 @@ def get_border_coords(arr, struct, label=True):
 
     return np.where(tmp - eroded)
 
-def fill_hole_mult_label(arr, mask, struct, exclude=None):
+def idxof(coo):
+    """
+    transform simple coo to allow indexing
+    """
+    coo = np.asarray(coo).flatten()
+    l = [slice(c,c+1,1) for c in coo]
+    return tuple(l)
+
+def valof(arr, coo):
+    """
+    get value of arr at coo
+    """
+    return arr[tuple(coo)]
+
+
+
+
+def log(msg, *args):
+    # print(" LOG.setLevel : {}", LOG.setLevel)
+    # print(" Effective : {}", LOG.getEffectiveLevel())
+    to_print = print(msg.format(*args))
+    LOG.log(LOG.setLevel, to_print, ()) # msg, *args)
+
+def fill_hole_mult_label(arr, mask, struct, exclude=None, loglevel=0):
     """
     fill points in mask (bool array indicating which regions have to be
     filled) with labels in arr
@@ -168,55 +199,74 @@ def fill_hole_mult_label(arr, mask, struct, exclude=None):
     Examples
     --------
     """
+    
     filledarray = arr.copy()
+    maskcopy = mask.copy()
+    LOG.setLevel = loglevel
 
-    border = np.asarray(get_border_coords(mask, struct, label=1))
-    if len(border[0]) == 0:
+    log("fill_holes loglevel : {} Effective {} ", 
+            LOG.setLevel, LOG.getEffectiveLevel())
+    log("\n\n ======================== Entering ================== ")
+    log("mask.sum {} ", mask.sum())
+    log(" mask {}", mask)
+    log(" arr {}",arr)
+
+    if mask.sum() == 0: #nothing in mask
         return arr
 
-    for cooidx in range(border.shape[1]):
+    # coords_in_mask = np.where(mask)
+    border = np.asarray(get_border_coords(mask, struct, label=True))
+
+    log("border.shape = {} ", border.shape) 
+
+    nb_pts = border.shape[1]
+    #ndim = border.shape[0]
+
+    for cooidx in range(nb_pts):
         point = border[:,cooidx]
-        neighvals = np.asarray(
-                neigh_values(point, struct, arr, exclude_centre=True))
-        
+        log("\n ======================== point is {}", point) 
+        no_progress = True
+        neighcoords = neigh_coords(point, struct, arr.shape)
+        # keep these coords that are not in the mask (the hole)
+        neighcoords = np.asarray([pt for pt in neighcoords.T 
+                                            if mask[tuple(pt)] == False]).T
+        log("neighcoords :{} \n",neighcoords)
+        log("arr val {}", [arr[tuple(pt)] for pt in neighcoords.T])
+        log("mask val {}", [mask[tuple(pt)] for pt in neighcoords.T])
+
+        neighvals = np.asarray([arr[tuple(pt)] for pt in neighcoords.T])
+        log('neighvals {}', (point, neighvals))
         # value most present ?
         uniquevals = np.unique(neighvals)
+        # log('point uniquevals ', (point, uniquevals), file=sys.stdout)
 
         if exclude is not None:
-            uniquevals = [v for v in uniquevals if v != exclude]
+            uniquevals = [v for v in uniquevals if (v != exclude)]
             # if nothing around is not excluded (hole in background?)
             if len(uniquevals) == 0:
-                filledarray[point] = exclude
-                mask[point] = 0
+                log("*** no non excluded point in environment of : {} ", point)
+                #filledarray[point] = exclude
+                #mask[point] = 0
+                continue
+
+        log('uniquevals without excluded {} ', uniquevals) 
 
         count = [(neighvals==v).sum() for v in uniquevals]
+        log("\t count {} ", count)
         label = uniquevals[np.argmax(count)]
-        filledarray[point] = label
-        mask[point] = 0
+        filledarray[tuple(point)] = label
+        log("\t ----- putting label {} ------------", label)
+        maskcopy[tuple(point)] = False
 
     # we have filled one border. Start again with the eroded mask!
     arr = filledarray
-    return fill_hole_mult_label(arr, mask, struct, exclude=None)
+    mask = maskcopy
+    return fill_hole_mult_label(arr, mask, struct, 
+                                    exclude=exclude, loglevel=loglevel)
 
 
 
         
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
