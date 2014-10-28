@@ -1,0 +1,8 @@
+*.pyc
+atlases
+joblib
+*.txt
+*.nii
+tmp
+
+
