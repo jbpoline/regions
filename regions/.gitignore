@@ -4,5 +4,9 @@ joblib
 *.txt
 *.nii
 tmp
+tmp.*
+*.nii*
+.ipynb_checkpoints
+*.npy
 
 
