@@ -95,7 +95,29 @@ def test_fill_hole_mult_labels():
     fillarr = fill_hole_mult_label(testarr, testarr==0, boule, exclude=-1)
 
     pt = [1,3,1] # should be 2
-    assert fillarr[pt] == 2
+    assert fillarr[idxof(pt)] == 2
     pt = [1,1,3] # should be 1
-    assert fillarr[pt] == 1
+    assert fillarr[idxof(pt)] == 1
 
+def test_fill_hole_mult_label():
+    """
+    """
+    testarr = make_testarr2()
+    #print(testarr)
+    boule1 = morph.generate_binary_structure(3,1)
+    filledarr = fill_hole_mult_label(testarr, testarr==0, boule1, exclude=-1,
+                                    loglevel=30);
+
+    assert_array_equal(filledarr[1,1,:], [-1,  1,  1,  1,  1,  1, -1])
+    assert_array_equal(filledarr[1,2,:], [-1,  2,  1,  1,  1,  1, -1])
+    assert_array_equal(filledarr[2,2,:], [-1,  2,  1,  1,  1,  1, -1])
+
+    filledarr = fill_hole_mult_label(testarr, testarr==0, boule1, exclude=None,
+                                    loglevel=30);
+
+    assert_array_equal(filledarr[1,1,:], [-1, -1,  -1, -1, 1, 1, -1])
+    assert_array_equal(filledarr[1,2,:], [-1, -1,  -1, -1, 1, 1, -1])
+    assert_array_equal(filledarr[2,3,:], [-1, -1,  2,  2,  2,  2, -1])
+
+
+    
