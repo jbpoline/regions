@@ -7,12 +7,12 @@ import tempfile
 from datetime import datetime 
 import logging as logg
 
-logg.basicConfig(level=logg.DEBUG)
-LOG = logg.getLogger("cleanAtlas")
+logg.basicConfig()
+LOG = logg.getLogger("clean_atlas")
 
 dtime = datetime.now().strftime("%y-%m-%d-%H-%M-%S")
 print("reloading clean atlas at %s \n" % dtime)
-sys.stdout.flush()
+#sys.stdout.flush()
 
 
 def translate_struct(point, struct):
@@ -149,34 +149,28 @@ def get_border_coords(arr, struct, label=True):
     Examples
     --------
     """
-   
     tmp = (arr==label)
     eroded = morph.binary_erosion(tmp, struct)
-
     return np.where(tmp - eroded)
 
-def idxof(coo):
-    """
-    transform simple coo to allow indexing
-    """
-    coo = np.asarray(coo).flatten()
-    l = [slice(c,c+1,1) for c in coo]
-    return tuple(l)
+def critical(msg, *args): # 50
+    log(logg.CRITICAL, msg, *args)
 
-def valof(arr, coo):
-    """
-    get value of arr at coo
-    """
-    return arr[tuple(coo)]
+def error(msg, *args): # 40
+    log(logg.ERROR, msg, *args)
 
+def warn(msg, *args): # 30
+    log(logg.WARN, msg, *args)
 
+def info(msg, *args): # 20
+    log(logg.INFO, msg, *args)
 
+def debug(msg, *args): # 10
+    log(logg.DEBUG, msg, *args)
 
-def log(msg, *args):
-    # print(" LOG.setLevel : {}", LOG.setLevel)
-    # print(" Effective : {}", LOG.getEffectiveLevel())
-    to_print = print(msg.format(*args))
-    LOG.log(LOG.setLevel, to_print, ()) # msg, *args)
+def log(localLogLevel, msg, *args):
+    toprnt = msg.format(*args)
+    LOG.log(localLogLevel, toprnt)
 
 def fill_hole_mult_label(arr, mask, struct, exclude=None, loglevel=0):
     """
@@ -194,77 +188,105 @@ def fill_hole_mult_label(arr, mask, struct, exclude=None, loglevel=0):
 
     Returns
     -------
-    filledarray : array of shape arr.shape
+    filled_array: array of shape arr.shape
 
     Examples
     --------
     """
+
+    # set global level of logging 
+    LOG.setLevel(loglevel)
     
-    filledarray = arr.copy()
-    maskcopy = mask.copy()
-    LOG.setLevel = loglevel
 
-    log("fill_holes loglevel : {} Effective {} ", 
+    debug("fill_holes loglevel : {} Effective {} ", 
             LOG.setLevel, LOG.getEffectiveLevel())
-    log("\n\n ======================== Entering ================== ")
-    log("mask.sum {} ", mask.sum())
-    log(" mask {}", mask)
-    log(" arr {}",arr)
+    debug("\n\n ======================== Entering ================== ")
+    debug("mask.sum {} ", mask.sum())
+    debug(" mask {}", mask)
+    debug(" arr {}",arr)
 
-    if mask.sum() == 0: #nothing in mask
+    hole_size = mask.sum()
+    if hole_size == 0: #nothing in mask
         return arr
 
-    # coords_in_mask = np.where(mask)
-    border = np.asarray(get_border_coords(mask, struct, label=True))
+    progress = True
+    filled_labels = []
 
-    log("border.shape = {} ", border.shape) 
+    hole_size = mask.sum()
+    while (hole_size > 0 and progress):
+        arraycopy = arr.copy()
+        maskcopy = mask.copy()
+        progress = False # as usual
+        border = np.asarray(get_border_coords(mask, struct, label=True))
+        debug("Working on border with border.shape = {} ", border.shape) 
+        nb_pts = border.shape[1]
+        if nb_pts:
+            hole_val = arr[tuple(border[:,0])]
+        else:
+            hole_val = None
+        critical(" nb of points in border {} of hole size {} array val {}",
+                nb_pts, hole_size, hole_val)
+        #ndim = border.shape[0]
+    
+        #--------------- for the coordinates in the border ------------------#
+        for cooidx in range(nb_pts):
+            point = border[:,cooidx]
+            debug("\n ======================== point is {}", point) 
+            neighcoords = neigh_coords(point, struct, arr.shape)
+    
+            # keep these coords that are not in the mask, eg mask[pt] == False 
+            neighcoords = np.asarray([pt for pt in neighcoords.T 
+                if mask[tuple(pt)] == False]).T
+    
+            debug("neighcoords :{}",neighcoords)
+            debug("arr val {}", [arr[tuple(pt)] for pt in neighcoords.T])
+            debug("mask val {}", [mask[tuple(pt)] for pt in neighcoords.T])
+    
+            # get the values of these neighbors coords
+            neighvals = np.asarray([arr[tuple(pt)] for pt in neighcoords.T])
+            debug('neighvals {}', (point, neighvals))
+    
+            # what values of the neighbourhood are of interest ?
+            uniquevals = np.unique(neighvals)
+            debug('point {} uniquevals {} ', point, uniquevals)
+    
+            if exclude is not None:
+                uniquevals = [v for v in uniquevals if (v != exclude)]
+                # if all neighbour points are excluded (hole in background?)
+                if len(uniquevals) == 0:
+                    warn("*** all point around {} are excluded  ", point)
+                    #arraycopy[point] = exclude
+                    #mask[point] = 0
+                    continue
+    
+            debug('uniquevals without excluded {} ', uniquevals) 
+    
+            # values most present around this point? 
+            count = [(neighvals==v).sum() for v in uniquevals]
+            debug("\t count {} ", count)
+            label = uniquevals[np.argmax(count)]
+    
+            # a point is updated by a label
+            debug("\t ----- putting label {} ------------", label)
+            arraycopy[tuple(point)] = label
+            maskcopy[tuple(point)] = False
+            filled_labels.append(label)
+            progress = True
+        #--------------- for the coordinates in the border ------------------#
 
-    nb_pts = border.shape[1]
-    #ndim = border.shape[0]
+        # any progress after this border ?
+        if progress:
+            arr = arraycopy
+            mask = maskcopy
+            hole_size = mask.sum()
+            critical(" fill with labels : {}", filled_labels)
+        else:
+            warn("*** ---- no progress made at this border -----  ")
 
-    for cooidx in range(nb_pts):
-        point = border[:,cooidx]
-        log("\n ======================== point is {}", point) 
-        no_progress = True
-        neighcoords = neigh_coords(point, struct, arr.shape)
-        # keep these coords that are not in the mask (the hole)
-        neighcoords = np.asarray([pt for pt in neighcoords.T 
-                                            if mask[tuple(pt)] == False]).T
-        log("neighcoords :{} \n",neighcoords)
-        log("arr val {}", [arr[tuple(pt)] for pt in neighcoords.T])
-        log("mask val {}", [mask[tuple(pt)] for pt in neighcoords.T])
-
-        neighvals = np.asarray([arr[tuple(pt)] for pt in neighcoords.T])
-        log('neighvals {}', (point, neighvals))
-        # value most present ?
-        uniquevals = np.unique(neighvals)
-        # log('point uniquevals ', (point, uniquevals), file=sys.stdout)
-
-        if exclude is not None:
-            uniquevals = [v for v in uniquevals if (v != exclude)]
-            # if nothing around is not excluded (hole in background?)
-            if len(uniquevals) == 0:
-                log("*** no non excluded point in environment of : {} ", point)
-                #filledarray[point] = exclude
-                #mask[point] = 0
-                continue
-
-        log('uniquevals without excluded {} ', uniquevals) 
-
-        count = [(neighvals==v).sum() for v in uniquevals]
-        log("\t count {} ", count)
-        label = uniquevals[np.argmax(count)]
-        filledarray[tuple(point)] = label
-        log("\t ----- putting label {} ------------", label)
-        maskcopy[tuple(point)] = False
-
-    # we have filled one border. Start again with the eroded mask!
-    arr = filledarray
-    mask = maskcopy
-    return fill_hole_mult_label(arr, mask, struct, 
-                                    exclude=exclude, loglevel=loglevel)
-
-
+    #------------ while ------------- #
+    
+    critical("--------  exit ----------------------- ") 
+    return arr
 
         
 
