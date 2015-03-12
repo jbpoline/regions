@@ -293,7 +293,7 @@ class ProbAtlas(object):
         """
          
         if verbose:
-            print( " entering keep_mask stdout", file=sys.stdout)
+            print(" entering keep_mask stdout", file=sys.stdout)
             sys.stdout.flush()
 
         dimxyzr = self.shape 
