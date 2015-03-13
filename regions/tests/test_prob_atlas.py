@@ -117,7 +117,7 @@ def test_write_read():
     with tempfile.NamedTemporaryFile(mode='w+t') as tmpf:
         tmpfilename = tmpf.name
 
-    T.writefile(tmpfilename)
+    T.write_to_file(tmpfilename)
     N = readAtlasFile(tmpfilename)
 
     # os.remove(tmpfilename)
@@ -195,10 +195,10 @@ def test_zero_rois():
     (d, a, l) = make_data()
     d[:,:,:,1] = tiny/2.0
     N = make_fake_atlas(d, a, l)
-    assert_equal(N.zero_rois(thres=tiny), [1])
+    assert_equal(N.find_zero_rois(thres=tiny), [1])
     d[:,:,:,2] = tiny/2.0
     N = make_fake_atlas(d, a, l)
-    assert_equal(N.zero_rois(thres=tiny), [1,2])
+    assert_equal(N.find_zero_rois(thres=tiny), [1,2])
     
 
 
