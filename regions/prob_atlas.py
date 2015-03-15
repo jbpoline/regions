@@ -9,6 +9,7 @@ import numpy.testing as npt
 import sys
 import json
 from datetime import datetime 
+import glob
 # from .utils import resample, atlas_mean, check_float_approximation
 
 # this is for debug purposes
@@ -20,6 +21,44 @@ sys.stdout.flush()
 cast_to = 'float32'
 tiny = np.finfo(cast_to).eps * 1000
 
+
+
+def load_aal_atlas(atlas_dir, aal_basename="ROI_MNI_V4", verbose=0):
+    """
+    utility function to load the AAL atlas
+    returns a ProbAtlas object
+    """
+    
+    if not osp.isdir(atlas_dir):
+        raise ValueError("%s not a directory" % atlas_dir)
+
+    aal_img_name = glob.glob(osp.join(atlas_dir, aal_basename+"*.nii"))[0]
+    aal_labels_name = glob.glob(osp.join(atlas_dir, aal_basename+"*.txt"))[0]
+    aalimg = nib.load(aal_img_name)
+    data = aalimg.get_data()
+
+    labels = []
+    with open(aal_labels_name) as f:
+        for line in f.read().splitlines():
+            labels.append(line.split("\t"))
+    
+    # labels is now a list of ["short name", "long name", "ROI_value"]
+    # [['FAG', 'Precentral_L', '2001'], ['FAD', 'Precentral_R', '2002'], ...]
+    n_roi = len(labels)
+    split_data = np.ndarray(aalimg.shape + (n_roi,), dtype=bool)
+    split_data.fill(False)
+    
+    only_name_labels = []
+    roi_size = []
+    for idx,lab in enumerate(labels):
+        only_name_labels.append(lab[1])
+        split_data[...,idx] = data==int(lab[2])
+        roi_size.append(split_data[...,idx].sum())
+    
+    return (split_data, aalimg.get_affine(), only_name_labels, roi_size)
+
+
+    
 
 def load_atlas(atlas_name, atlas_dir, atlas_labels='', scalefactor=1.0, 
                 verbose=0, clean=True):
@@ -68,9 +107,10 @@ def load_atlas(atlas_name, atlas_dir, atlas_labels='', scalefactor=1.0,
         # add a dimension if only 3D : one region
         data = data[...,None]
         warn("adding an extra dimension to only 3d data")
+    
+    nrois = data.shape[3]
 
     if verbose:
-        nrois = data.shape[3]
         print("Atlas has %d rois \n" % nrois, file=sys.stdout)
         # print "\nMax values : ", [data[...,idx].max() for idx in range(nrois)]
         # print "\nMin values : ", [data[...,idx].min() for idx in range(nrois)]
@@ -111,6 +151,13 @@ def readAtlasFile(filename):
     """
     read a nifti image and a jason file, image must be .nii or .nii.gz 
     json must be .txt or .json
+    The json has this kind of format: 
+       [["0", "Left_Frontal Pole"],
+        ["1", "Left_Insular Cortex"],
+        ["2", "Left_Superior Frontal Gyrus"],
+        ["3", "Left_Middle Frontal Gyrus"],
+        ...
+       ]
     input:
         filename: string 
     return:
@@ -387,7 +434,7 @@ class ProbAtlas(object):
         write a nifti image and a jason file
         """
         if osp.isfile(filename) and not force:
-            warn(" %s exists - use force=1 to overwrite" % filename)
+            warn(" %s exists - use force=True to overwrite" % filename)
             return None
         else:
             fbase, _ = osp.splitext(filename) 
