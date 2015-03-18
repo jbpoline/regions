@@ -2,11 +2,11 @@ from __future__ import print_function
 from numpy.testing import (assert_array_almost_equal, assert_almost_equal, assert_array_equal, assert_equal)
 import numpy as np
 from regions.prob_atlas import *
+from regions.load_atlas import *
 #import sys
 #import os
 import tempfile
-cast_to = 'float32'
-tiny = np.finfo(cast_to).eps * 1000
+tiny = np.finfo(float).eps * 1000
 
 def make_data():
     d = np.arange(4*4*3*3).reshape((4,4,3,3)) + 1.
@@ -118,7 +118,9 @@ def test_write_read():
         tmpfilename = tmpf.name
 
     T.write_to_file(tmpfilename)
-    N = readAtlasFile(tmpfilename)
+    (data, aff, labels) = load_tmp_atlas(tmpfilename)
+    print(aff)
+    N = ProbAtlas(data, aff, labels)
 
     # os.remove(tmpfilename)
 

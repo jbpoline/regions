@@ -4,4 +4,5 @@ __version__ = '0.111'
 #from .helpers import harvard_oxford_atlas, mni_atlas, juelich_atlas
 from .prob_atlas import * 
 from .clean_atlas import * 
+from .load_atlas import * 
 
