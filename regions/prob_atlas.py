@@ -291,7 +291,8 @@ class ProbAtlas(object):
             else:
                 return(data.astype(dt))
 
-        # check directory is legit        
+        # check directory is legit 
+        directory = osp.realpath(directory)
         if not os.access(directory, os.W_OK):
            raise ValueError(" cannot write to : {0}".format(directory))
         
@@ -301,11 +302,12 @@ class ProbAtlas(object):
         fnames = [strfmt.format(lab) for lab in lablist]
 
         for idx, fname in enumerate(fnames):
-            fbase = osp.join(directory, prefix, fname, postfix)
+            fname = prefix+fname+postfix
+            fbase = osp.join(directory, fname)
             if osp.isfile(fbase) and not force:
                 warn("cannot overwrite with this setting, {}".format(fbase))
             else:
-                img = nib.Nifti1Image(np.asarray(_cast2(self._data[...,idx])), self.affine)
+                img = nib.Nifti1Image(np.asarray(_cast2(self._data[...,idx],cast2)), self.affine)
                 nib.save(img, fbase+'.nii.gz')
 
 
